@@ -14,6 +14,7 @@ import platform
 
 import socket
 import threading
+import json
 
 class Game:
     def __init__(self ,host:str=None ,game_type:str=None) -> None:
@@ -30,18 +31,63 @@ class Game:
         self.port = 9000
         self.host = host
         self.type = game_type
-        self.scores = {}
+
+        self.health = self.player.health
+        self.__messages = []
+
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.host, self.port))
+
+        self.socket.send(json.dumps({
+            "user": {
+                # "id": 1,
+                "name": platform.node()
+            },
+            "message": "SYN"
+        }).encode('utf-8'))
+        self._private = 1
+
+        self.on_message_receive = None
+
         self.running = True
-        if game_type == 'join':
-            self.join_thread = threading.Thread(target=self.join_session)
-            self.join_thread.start()
-            # self.join_session()
-        elif game_type == 'create':
-            self.create_thread = threading.Thread(target=self.create_session)
-            self.create_thread.start()
-            # self.create_session()
+
+        server_listener = threading.Thread(target=self.listen_to_server)
+        server_listener.start()
 
         
+    def send_message_as_dict(self):
+        message = {
+            "user": {
+                # "id": self.id,
+                "name": platform.node()
+            },
+            "message": self.player.health
+        }
+
+        self.send_message(message)
+    
+    def send_message(self, message):
+        print(f"In client socket, sending message: {message}")
+        self.socket.send(json.dumps(message).encode('utf-8'))
+    
+    def listen_to_server(self):
+        while self.running:
+            try:
+                data_bytes = self.socket.recv(1024)
+                print(f"Message received: ")
+                message = data_bytes.decode()
+                print(message)
+
+                self.__messages.append(message)
+
+                if self.on_message_receive and callable(self.on_message_receive):
+                    message = json.loads(message)
+                    self.on_message_receive(message)
+            # exit loop if there is an error
+            except ConnectionAbortedError:
+                break
+
+
 
     def new_game(self):
         self.map = Map(self)
@@ -58,12 +104,11 @@ class Game:
         self.raycasting.update()
         self.object_handler.update()
         self.weapon.update()
-        print("The player: ")
-        print(self.player.health)
-        if self.type == 'create' or self.type == 'join':
-            score_message = f"{platform.node()}:{self.player.health}"
-            self.send_data(score_message)
+        
+        if(self.health != self.player.health):
+            self.send_message_as_dict()
 
+        self.health = self.player.health
         pg.display.flip()
         self.delta_time = self.clock.tick(FPS)
         pg.display.set_caption(f'{self.clock.get_fps() : .1f}')
@@ -76,9 +121,6 @@ class Game:
         # self.map.draw()
         # self.player.draw()
 
-        print("\n Current scores:")
-        for player_name ,score in self.scores.items():
-            print(f"{player_name}:{score}")
 
     def check_events(self):
         self.global_trigger = False
@@ -93,60 +135,8 @@ class Game:
     def run(self):
         while True:
             self.check_events()
-            self.update()
             self.draw()
-
-    def create_session(self):
-        try:
-            with socket.socket(socket.AF_INET ,socket.SOCK_STREAM) as s:
-                s.bind((self.host ,self.port))
-                s.listen(1)
-                conn ,addr =s.accept()
-                print("A player connected: ",addr)
-                self.conn = conn
-                while self.running:
-                    data = conn.recv(1024)
-                    if(data):
-                        data_str = data.decode()
-                        if ":" in data_str:
-                            player_name ,score = data_str.split(':')
-                            self.scores[player_name] = int(score)
-                    # score_message = 
-                        # print(data.decode())
-        except:
-            print("An error occured while creating a sesion")
-            self.running = False
-            # sys.exit()
-
-    def join_session(self):
-        try:
-            with socket.socket(socket.AF_INET ,socket.SOCK_STREAM) as s:
-                s.connect((self.host ,self.port))
-                self.s = s
-                while self.running:
-                    data = s.recv(1024)
-                    if data:
-                        data_str = data.decode()
-                        if ":" in data_str:
-                            player_name ,score = data_str.split(':')
-                            self.scores[player_name] = int(score)
-                        # print("Received: ",data.decode())
-        except:
-            print('An error occured while trying to join the session')
-            self.running
-            # sys.exit()
-
-    def send_data(self ,message):
-        if self.type == 'create':
-            try:
-                self.conn.sendall(message.encode())
-            except:
-                pass
-        elif self.type == 'join':
-            try:
-                self.s.sendall(message.encode())
-            except:
-                pass
+            self.update()
 
 
 if __name__ == '__main__':
@@ -161,9 +151,9 @@ if __name__ == '__main__':
     if 'join' in args:
         print("Join LAN game")
         game = Game(host ,'join')
-    elif 'create' in args:
-        print("create LAN game")
-        game = Game(host ,'create')
+    # elif 'create' in args:
+    #     print("create LAN game")
+    #     game = Game(host ,'create')
     else:
         print("Playing a solo game")
         game = Game()
