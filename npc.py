@@ -82,6 +82,7 @@ class NPC(AnimatedSprite):
         if self.health < 1:
             self.alive = False
             self.game.sound.npc_death.play()
+            self.game.increment_kills()  # Add this line to increment kills
 
     def run_logic(self):
         if self.alive:

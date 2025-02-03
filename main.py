@@ -14,6 +14,90 @@ import platform
 
 import socket
 import threading
+import json
+
+# Add this import at the top with other imports
+from database_handler import DatabaseHandler
+from server import GameServer  # Add this import
+
+class Menu:
+    def __init__(self):
+        pg.init()
+        pg.mouse.set_visible(True)  # Make sure mouse is visible in menu
+        self.screen = pg.display.set_mode(RES)
+        self.clock = pg.time.Clock()
+        self.font = pg.font.Font(None, 64)
+        self.small_font = pg.font.Font(None, 36)
+        self.buttons = {
+            'create': pg.Rect(WIDTH//2 - 100, HEIGHT//2 - 50, 200, 50),
+            'join': pg.Rect(WIDTH//2 - 100, HEIGHT//2 + 50, 200, 50)
+        }
+        self.input_active = False
+        self.input_text = ''
+        self.input_rect = pg.Rect(WIDTH//2 - 150, HEIGHT//2 + 120, 300, 40)
+
+    def draw(self):
+        self.screen.fill((0, 0, 0))
+        
+        # Title
+        title = self.font.render('DOOM-STYLE GAME', True, (255, 0, 0))
+        self.screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
+
+        # Create Server button
+        pg.draw.rect(self.screen, (100, 100, 100), self.buttons['create'])
+        create_text = self.small_font.render('Create Server', True, (255, 255, 255))
+        self.screen.blit(create_text, (self.buttons['create'].centerx - create_text.get_width()//2, 
+                                     self.buttons['create'].centery - create_text.get_height()//2))
+
+        # Join Server button
+        pg.draw.rect(self.screen, (100, 100, 100), self.buttons['join'])
+        join_text = self.small_font.render('Join Server', True, (255, 255, 255))
+        self.screen.blit(join_text, (self.buttons['join'].centerx - join_text.get_width()//2,
+                                   self.buttons['join'].centery - join_text.get_height()//2))
+
+        # IP input box (only shown when joining)
+        if self.input_active:
+            pg.draw.rect(self.screen, (100, 100, 100), self.input_rect)
+            text_surface = self.small_font.render(self.input_text, True, (255, 255, 255))
+            self.screen.blit(text_surface, (self.input_rect.x + 5, self.input_rect.y + 5))
+            
+            # Add helper text
+            helper_text = self.small_font.render('Enter IP address and press Enter', True, (200, 200, 200))
+            self.screen.blit(helper_text, (WIDTH//2 - helper_text.get_width()//2, self.input_rect.bottom + 10))
+
+        pg.display.flip()
+
+    def run(self):
+        while True:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    pg.quit()
+                    sys.exit()
+                
+                if event.type == pg.MOUSEBUTTONDOWN:
+                    mouse_pos = event.pos
+                    if self.buttons['create'].collidepoint(mouse_pos):
+                        # Start server and game
+                        server = GameServer()
+                        server_thread = threading.Thread(target=server.start)
+                        server_thread.daemon = True
+                        server_thread.start()
+                        return Game(host='localhost', game_type='create')
+                    
+                    elif self.buttons['join'].collidepoint(mouse_pos):
+                        self.input_active = True
+                
+                if event.type == pg.KEYDOWN and self.input_active:
+                    if event.key == pg.K_RETURN:
+                        if self.input_text:
+                            return Game(host=self.input_text, game_type='join')
+                    elif event.key == pg.K_BACKSPACE:
+                        self.input_text = self.input_text[:-1]
+                    else:
+                        self.input_text += event.unicode
+
+            self.draw()
+            self.clock.tick(60)
 
 class Game:
     def __init__(self ,host:str=None ,game_type:str=None) -> None:
@@ -27,21 +111,95 @@ class Game:
         pg.time.set_timer(self.global_event, 40)
         self.new_game()
 
-        self.port = 9000
-        self.host = host
-        self.type = game_type
-        self.scores = {}
-        self.running = True
-        if game_type == 'join':
-            self.join_thread = threading.Thread(target=self.join_session)
-            self.join_thread.start()
-            # self.join_session()
-        elif game_type == 'create':
-            self.create_thread = threading.Thread(target=self.create_session)
-            self.create_thread.start()
-            # self.create_session()
+        # Network game initialization
+        self.is_network_game = host is not None and game_type is not None
+        if self.is_network_game:
+            self.port = 9000
+            self.host = host
+            self.type = game_type
+            self.is_host = game_type == 'create'
+            self.health = self.player.health
+            self.__messages = []
+
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect((self.host, self.port))
+
+            # Send initial connection message with role info
+            self.socket.send(json.dumps({
+                "user": {
+                    "name": platform.node(),
+                    "role": "host" if self.is_host else "client"
+                },
+                "type": "connection",
+                "message": "SYN"
+            }).encode('utf-8'))
+
+            print(f"Connected as {'HOST' if self.is_host else 'CLIENT'}")
+            self._private = 1
+
+            self.on_message_receive = None
+            self.running = True
+
+            server_listener = threading.Thread(target=self.listen_to_server)
+            server_listener.start()
+
+        # Change font size to be more readable
+        self.font = pg.font.Font(None, 36)  # Smaller font size
+        self.stats_font = pg.font.Font(None, 72)  # Larger font for stats screen
+
+        self.db = DatabaseHandler()
+        self.player_name = platform.node()
+        self.kills = 0
+        self.last_saved_kills = 0  # Initialize this
+        # Start new session
+        self.db.start_new_session(self.player_name)
 
         
+    def send_message_as_dict(self):
+        message = {
+            "user": {
+                "name": platform.node(),
+                "role": "host" if self.is_host else "client"
+            },
+            "type": "update",
+            "message": {
+                "health": self.player.health,
+                "kills": self.kills,
+                "position": list(self.player.pos)  # Send player position
+            }
+        }
+        self.send_message(message)
+    
+    def send_message(self, message):
+        print(f"In client socket, sending message: {message}")
+        self.socket.send(json.dumps(message).encode('utf-8'))
+    
+    def listen_to_server(self):
+        while self.running:
+            try:
+                data_bytes = self.socket.recv(1024)
+                message = json.loads(data_bytes.decode())
+                print(f"Received message from {'Host' if message['user'].get('role') == 'host' else 'Client'}: {message}")
+
+                # Handle different message types
+                if message.get('type') == 'update':
+                    if message['user']['name'] != platform.node():  # Don't process own messages
+                        self.handle_player_update(message)
+
+            except ConnectionAbortedError:
+                print("Disconnected from server")
+                break
+            except json.JSONDecodeError:
+                print("Received invalid message format")
+            except Exception as e:
+                print(f"Error in listener: {e}")
+
+    def handle_player_update(self, message):
+        """Handle updates from other players"""
+        if 'message' in message:
+            data = message['message']
+            # Update other player data here
+            print(f"Player {message['user']['name']} health: {data.get('health')}")
 
     def new_game(self):
         self.map = Map(self)
@@ -58,11 +216,17 @@ class Game:
         self.raycasting.update()
         self.object_handler.update()
         self.weapon.update()
-        print("The player: ")
-        print(self.player.health)
-        if self.type == 'create' or self.type == 'join':
-            score_message = f"{platform.node()}:{self.player.health}"
-            self.send_data(score_message)
+        
+        if self.is_network_game and self.health != self.player.health:
+            self.send_message_as_dict()
+            self.health = self.player.health
+
+        # Save stats periodically
+        if self.global_trigger:
+            if self.kills != self.last_saved_kills:  # Only save when kills change
+                self.db.save_player_stats(self.player_name, self.player.health, self.kills)
+                self.last_saved_kills = self.kills
+                print(f"Saved kills to database: {self.kills}")  # Debug print
 
         pg.display.flip()
         self.delta_time = self.clock.tick(FPS)
@@ -73,102 +237,131 @@ class Game:
         # self.screen.fill('black')
         self.object_renderer.draw()
         self.weapon.draw()
+        self.draw_health()  # Add this line to draw health
+        self.draw_stats()
         # self.map.draw()
         # self.player.draw()
 
-        print("\n Current scores:")
-        for player_name ,score in self.scores.items():
-            print(f"{player_name}:{score}")
+    def draw_health(self):
+        health_text = f'Health: {self.player.health}%'
+        health_surface = self.font.render(health_text, True, (255, 0, 0))
+        # Move position more to the left
+        x = WIDTH - health_surface.get_width() - 100  # More padding
+        y = 20
+        # Simpler outline
+        outline = self.font.render(health_text, True, (0, 0, 0))
+        self.screen.blit(outline, (x + 1, y + 1))  # Single pixel outline
+        self.screen.blit(health_surface, (x, y))
+
+    def draw_stats(self):
+        kills_text = f'Kills: {self.kills}'
+        kills_surface = self.font.render(kills_text, True, (255, 0, 0))
+        x = WIDTH - kills_surface.get_width() - 100  # Match health padding
+        y = 50  # Slightly lower than health
+        # Add outline
+        outline = self.font.render(kills_text, True, (0, 0, 0))
+        self.screen.blit(outline, (x + 1, y + 1))
+        self.screen.blit(kills_surface, (x, y))
+
+    def draw_stats_screen(self):
+        """Draw a stats screen overlay"""
+        # Create semi-transparent overlay
+        overlay = pg.Surface((WIDTH, HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(128)
+        self.screen.blit(overlay, (0,0))
+
+        # Get stats data
+        high_scores = self.db.get_high_scores(5)
+        all_time_kills = self.db.get_all_time_kills(self.player_name)
+        best_session = self.db.get_total_kills(self.player_name)
+        sessions, _ = self.db.get_session_stats(self.player_name)
+
+        # Render stats
+        y_pos = 100
+        # Use stats_font for the stats screen
+        title = self.stats_font.render("STATS", True, (255, 255, 255))
+        self.screen.blit(title, (WIDTH//2 - title.get_width()//2, y_pos))
+
+        # Current session
+        y_pos += 80
+        current = self.font.render(f"Current Session: {self.kills} kills", True, (255, 0, 0))
+        self.screen.blit(current, (WIDTH//2 - current.get_width()//2, y_pos))
+
+        # Best session
+        y_pos += 50
+        best = self.font.render(f"Best Session: {best_session} kills", True, (255, 200, 0))
+        self.screen.blit(best, (WIDTH//2 - best.get_width()//2, y_pos))
+
+        # All-time kills
+        y_pos += 50
+        total = self.font.render(f"All-time Kills: {all_time_kills}", True, (0, 255, 0))
+        self.screen.blit(total, (WIDTH//2 - total.get_width()//2, y_pos))
+
+        # Total sessions
+        y_pos += 50
+        sessions_text = self.font.render(f"Total Sessions: {sessions}", True, (100, 200, 255))
+        self.screen.blit(sessions_text, (WIDTH//2 - sessions_text.get_width()//2, y_pos))
+
+        # High scores
+        y_pos += 80
+        for player, score in high_scores:
+            text = self.font.render(f"{player}: {score} kills", True, (255, 200, 0))
+            self.screen.blit(text, (WIDTH//2 - text.get_width()//2, y_pos))
+            y_pos += 50
 
     def check_events(self):
         self.global_trigger = False
         for event in pg.event.get():
             if event.type == pg.QUIT or (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE):
+                self.cleanup()
                 pg.quit()
                 sys.exit()
             elif event.type == self.global_event:
                 self.global_trigger = True
             self.player.single_fire_event(event)
+            # Add this to your existing event handling
+            if event.type == pg.KEYDOWN and event.key == pg.K_TAB:
+                self.draw_stats_screen()
+                pg.display.flip()
+                pg.time.wait(2000)  # Show stats for 2 seconds
 
     def run(self):
-        while True:
-            self.check_events()
-            self.update()
-            self.draw()
-
-    def create_session(self):
         try:
-            with socket.socket(socket.AF_INET ,socket.SOCK_STREAM) as s:
-                s.bind((self.host ,self.port))
-                s.listen(1)
-                conn ,addr =s.accept()
-                print("A player connected: ",addr)
-                self.conn = conn
-                while self.running:
-                    data = conn.recv(1024)
-                    if(data):
-                        data_str = data.decode()
-                        if ":" in data_str:
-                            player_name ,score = data_str.split(':')
-                            self.scores[player_name] = int(score)
-                    # score_message = 
-                        # print(data.decode())
-        except:
-            print("An error occured while creating a sesion")
+            while True:
+                self.check_events()
+                self.draw()
+                self.update()
+        except Exception as e:
+            print(f"Game error: {e}")
+        finally:
+            self.cleanup()
+
+    def cleanup(self):
+        """Clean up resources"""
+        if hasattr(self, 'db'):
+            self.db.close()
+        if hasattr(self, 'socket'):
+            self.socket.close()
+        if hasattr(self, 'running'):
             self.running = False
-            # sys.exit()
 
-    def join_session(self):
-        try:
-            with socket.socket(socket.AF_INET ,socket.SOCK_STREAM) as s:
-                s.connect((self.host ,self.port))
-                self.s = s
-                while self.running:
-                    data = s.recv(1024)
-                    if data:
-                        data_str = data.decode()
-                        if ":" in data_str:
-                            player_name ,score = data_str.split(':')
-                            self.scores[player_name] = int(score)
-                        # print("Received: ",data.decode())
-        except:
-            print('An error occured while trying to join the session')
-            self.running
-            # sys.exit()
-
-    def send_data(self ,message):
-        if self.type == 'create':
-            try:
-                self.conn.sendall(message.encode())
-            except:
-                pass
-        elif self.type == 'join':
-            try:
-                self.s.sendall(message.encode())
-            except:
-                pass
+    def increment_kills(self):
+        self.kills += 1
+        print(f"Kills updated: {self.kills}")
+        # Save immediately when kills increase
+        self.db.save_player_stats(self.player_name, self.player.health, self.kills)
+        self.last_saved_kills = self.kills
 
 
 if __name__ == '__main__':
-    args = sys.argv
-    if(len(args) == 3 ):
-        host=args[2]
-        print(f' host:post | {host}:9000')
-    elif len(args) > 1 or len(args) >3:
-        print('Invalid option')
-        sys.exit()
-
-    if 'join' in args:
-        print("Join LAN game")
-        game = Game(host ,'join')
-    elif 'create' in args:
-        print("create LAN game")
-        game = Game(host ,'create')
-    else:
-        print("Playing a solo game")
-        game = Game()
-
-    game.run()
-
-    # game = Game()
-    # game.run()
+    try:
+        pg.init()
+        menu = Menu()
+        game = menu.run()
+        if game:  # Only run the game if menu returns a game instance
+            game.run()
+    except Exception as e:
+        print(f"Error: {e}")
+    finally:
+        pg.quit()

@@ -35,3 +35,6 @@ SCALE = WIDTH // NUM_RAYS
 
 TEXTURE_SIZE = 256
 HALF_TEXTURE_SIZE = TEXTURE_SIZE // 2
+
+# Database settings
+DB_PATH = os.path.join(abs_folder_path, 'game_stats.db')
