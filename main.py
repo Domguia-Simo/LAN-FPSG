@@ -40,7 +40,7 @@ class Menu:
         self.screen.fill((0, 0, 0))
         
         # Title
-        title = self.font.render('DOOM-STYLE GAME', True, (255, 0, 0))
+        title = self.font.render('FIRST PERSON SHOOTER GAME', True, (255, 0, 0))
         self.screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
 
         # Create Server button
