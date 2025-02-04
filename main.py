@@ -23,19 +23,29 @@ from server import GameServer  # Add this import
 class Menu:
     def __init__(self):
         pg.init()
-        pg.mouse.set_visible(True)  # Make sure mouse is visible in menu
+        pg.mouse.set_visible(True)
         self.screen = pg.display.set_mode(RES)
         self.clock = pg.time.Clock()
         self.font = pg.font.Font(None, 64)
         self.small_font = pg.font.Font(None, 36)
-        self.buttons = {
+        
+        # Mode selection buttons
+        self.mode_buttons = {
+            'single': pg.Rect(WIDTH//2 - 150, HEIGHT//2 - 50, 300, 50),
+            'multiplayer': pg.Rect(WIDTH//2 - 150, HEIGHT//2 + 50, 300, 50)
+        }
+        
+        # Server buttons (for multiplayer)
+        self.server_buttons = {
             'create': pg.Rect(WIDTH//2 - 100, HEIGHT//2 - 50, 200, 50),
             'join': pg.Rect(WIDTH//2 - 100, HEIGHT//2 + 50, 200, 50)
         }
+        
         self.input_active = False
         self.input_text = ''
         self.input_rect = pg.Rect(WIDTH//2 - 150, HEIGHT//2 + 120, 300, 40)
-
+        self.show_mode_selection = True  # Start with mode selection
+        
     def draw(self):
         self.screen.fill((0, 0, 0))
         
@@ -43,27 +53,38 @@ class Menu:
         title = self.font.render('FIRST PERSON SHOOTER GAME', True, (255, 0, 0))
         self.screen.blit(title, (WIDTH//2 - title.get_width()//2, HEIGHT//4))
 
-        # Create Server button
-        pg.draw.rect(self.screen, (100, 100, 100), self.buttons['create'])
-        create_text = self.small_font.render('Create Server', True, (255, 255, 255))
-        self.screen.blit(create_text, (self.buttons['create'].centerx - create_text.get_width()//2, 
-                                     self.buttons['create'].centery - create_text.get_height()//2))
+        if self.show_mode_selection:
+            # Single Player button
+            pg.draw.rect(self.screen, (100, 100, 100), self.mode_buttons['single'])
+            single_text = self.small_font.render('Single Player', True, (255, 255, 255))
+            self.screen.blit(single_text, (self.mode_buttons['single'].centerx - single_text.get_width()//2,
+                                         self.mode_buttons['single'].centery - single_text.get_height()//2))
 
-        # Join Server button
-        pg.draw.rect(self.screen, (100, 100, 100), self.buttons['join'])
-        join_text = self.small_font.render('Join Server', True, (255, 255, 255))
-        self.screen.blit(join_text, (self.buttons['join'].centerx - join_text.get_width()//2,
-                                   self.buttons['join'].centery - join_text.get_height()//2))
+            # Multiplayer button
+            pg.draw.rect(self.screen, (100, 100, 100), self.mode_buttons['multiplayer'])
+            multi_text = self.small_font.render('LAN Multiplayer', True, (255, 255, 255))
+            self.screen.blit(multi_text, (self.mode_buttons['multiplayer'].centerx - multi_text.get_width()//2,
+                                        self.mode_buttons['multiplayer'].centery - multi_text.get_height()//2))
+        else:
+            # Create Server button
+            pg.draw.rect(self.screen, (100, 100, 100), self.server_buttons['create'])
+            create_text = self.small_font.render('Create Server', True, (255, 255, 255))
+            self.screen.blit(create_text, (self.server_buttons['create'].centerx - create_text.get_width()//2,
+                                         self.server_buttons['create'].centery - create_text.get_height()//2))
 
-        # IP input box (only shown when joining)
-        if self.input_active:
-            pg.draw.rect(self.screen, (100, 100, 100), self.input_rect)
-            text_surface = self.small_font.render(self.input_text, True, (255, 255, 255))
-            self.screen.blit(text_surface, (self.input_rect.x + 5, self.input_rect.y + 5))
-            
-            # Add helper text
-            helper_text = self.small_font.render('Enter IP address and press Enter', True, (200, 200, 200))
-            self.screen.blit(helper_text, (WIDTH//2 - helper_text.get_width()//2, self.input_rect.bottom + 10))
+            # Join Server button
+            pg.draw.rect(self.screen, (100, 100, 100), self.server_buttons['join'])
+            join_text = self.small_font.render('Join Server', True, (255, 255, 255))
+            self.screen.blit(join_text, (self.server_buttons['join'].centerx - join_text.get_width()//2,
+                                       self.server_buttons['join'].centery - join_text.get_height()//2))
+
+            # IP input box
+            if self.input_active:
+                pg.draw.rect(self.screen, (100, 100, 100), self.input_rect)
+                text_surface = self.small_font.render(self.input_text, True, (255, 255, 255))
+                self.screen.blit(text_surface, (self.input_rect.x + 5, self.input_rect.y + 5))
+                helper_text = self.small_font.render('Enter IP address and press Enter', True, (200, 200, 200))
+                self.screen.blit(helper_text, (WIDTH//2 - helper_text.get_width()//2, self.input_rect.bottom + 10))
 
         pg.display.flip()
 
@@ -76,16 +97,21 @@ class Menu:
                 
                 if event.type == pg.MOUSEBUTTONDOWN:
                     mouse_pos = event.pos
-                    if self.buttons['create'].collidepoint(mouse_pos):
-                        # Start server and game
-                        server = GameServer()
-                        server_thread = threading.Thread(target=server.start)
-                        server_thread.daemon = True
-                        server_thread.start()
-                        return Game(host='localhost', game_type='create')
                     
-                    elif self.buttons['join'].collidepoint(mouse_pos):
-                        self.input_active = True
+                    if self.show_mode_selection:
+                        if self.mode_buttons['single'].collidepoint(mouse_pos):
+                            return Game()  # Start single player game
+                        elif self.mode_buttons['multiplayer'].collidepoint(mouse_pos):
+                            self.show_mode_selection = False  # Show multiplayer options
+                    else:
+                        if self.server_buttons['create'].collidepoint(mouse_pos):
+                            server = GameServer()
+                            server_thread = threading.Thread(target=server.start)
+                            server_thread.daemon = True
+                            server_thread.start()
+                            return Game(host='localhost', game_type='create')
+                        elif self.server_buttons['join'].collidepoint(mouse_pos):
+                            self.input_active = True
                 
                 if event.type == pg.KEYDOWN and self.input_active:
                     if event.key == pg.K_RETURN:
@@ -154,6 +180,10 @@ class Game:
         # Start new session
         self.db.start_new_session(self.player_name)
 
+        self.frame_time = 0
+        self.target_fps = 60
+        self.frame_interval = 1.0 / self.target_fps
+
         
     def send_message_as_dict(self):
         message = {
@@ -212,35 +242,60 @@ class Game:
         self.pathfinding = PathFinding(self)
  
     def update(self): 
+        frame_start = pg.time.get_ticks() / 1000.0  # Convert to seconds
+
+        # Update game state
         self.player.update()
         self.raycasting.update()
         self.object_handler.update()
         self.weapon.update()
         
+        # Network updates in a separate thread
         if self.is_network_game and self.health != self.player.health:
-            self.send_message_as_dict()
+            network_thread = threading.Thread(target=self.send_message_as_dict)
+            network_thread.daemon = True
+            network_thread.start()
             self.health = self.player.health
 
-        # Save stats periodically
-        if self.global_trigger:
-            if self.kills != self.last_saved_kills:  # Only save when kills change
-                self.db.save_player_stats(self.player_name, self.player.health, self.kills)
-                self.last_saved_kills = self.kills
-                print(f"Saved kills to database: {self.kills}")  # Debug print
+        # Stats saving in a separate thread
+        if self.global_trigger and self.kills != self.last_saved_kills:
+            stats_thread = threading.Thread(target=self.save_stats)
+            stats_thread.daemon = True
+            stats_thread.start()
 
+        # Frame timing and limiting
+        self.frame_time = (pg.time.get_ticks() / 1000.0) - frame_start
+        if self.frame_time < self.frame_interval:
+            pg.time.delay(int((self.frame_interval - self.frame_time) * 1000))
+
+        # Update display
         pg.display.flip()
-        self.delta_time = self.clock.tick(FPS)
-        pg.display.set_caption(f'{self.clock.get_fps() : .1f}')
+        self.delta_time = self.clock.tick_busy_loop(self.target_fps)
+        fps = self.clock.get_fps()
+        pg.display.set_caption(f'FPS: {fps:.1f}')
 
+    def save_stats(self):
+        """Separate thread for saving stats"""
+        self.db.save_player_stats(self.player_name, self.player.health, self.kills)
+        self.last_saved_kills = self.kills
+        print(f"Saved kills to database: {self.kills}")
 
     def draw(self):
-        # self.screen.fill('black')
+        # Only redraw what's necessary
+        dirty_rects = []
+        
+        # Draw main game elements
         self.object_renderer.draw()
         self.weapon.draw()
-        self.draw_health()  # Add this line to draw health
-        self.draw_stats()
-        # self.map.draw()
-        # self.player.draw()
+        
+        # Draw UI elements only in dirty regions
+        health_rect = self.draw_health()
+        stats_rect = self.draw_stats()
+        
+        dirty_rects.extend([health_rect, stats_rect])
+        
+        # Update only the changed portions of the screen
+        pg.display.update(dirty_rects)
 
     def draw_health(self):
         health_text = f'Health: {self.player.health}%'
@@ -252,6 +307,8 @@ class Game:
         outline = self.font.render(health_text, True, (0, 0, 0))
         self.screen.blit(outline, (x + 1, y + 1))  # Single pixel outline
         self.screen.blit(health_surface, (x, y))
+        rect = pg.Rect(x, y, health_surface.get_width() + 2, health_surface.get_height() + 2)
+        return rect
 
     def draw_stats(self):
         kills_text = f'Kills: {self.kills}'
@@ -262,6 +319,8 @@ class Game:
         outline = self.font.render(kills_text, True, (0, 0, 0))
         self.screen.blit(outline, (x + 1, y + 1))
         self.screen.blit(kills_surface, (x, y))
+        rect = pg.Rect(x, y, kills_surface.get_width() + 2, kills_surface.get_height() + 2)
+        return rect
 
     def draw_stats_screen(self):
         """Draw a stats screen overlay"""
