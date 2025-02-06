@@ -36,5 +36,9 @@ SCALE = WIDTH // NUM_RAYS
 TEXTURE_SIZE = 256
 HALF_TEXTURE_SIZE = TEXTURE_SIZE // 2
 
+# Player view settings
+PLAYER_MAX_PITCH = 0.5  # Maximum up angle
+PLAYER_MIN_PITCH = -0.5  # Maximum down angle
+
 # Database settings
 DB_PATH = os.path.join(abs_folder_path, 'game_stats.db')

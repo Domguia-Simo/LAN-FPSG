@@ -125,8 +125,10 @@ class Menu:
             self.draw()
             self.clock.tick(60)
 
+from typing import Optional
+
 class Game:
-    def __init__(self ,host:str=None ,game_type:str=None) -> None:
+    def __init__(self, host: Optional[str] = None, game_type: Optional[str] = None) -> None:
         pg.init()
         pg.mouse.set_visible(False)
         self.screen = pg.display.set_mode(RES)
@@ -139,10 +141,10 @@ class Game:
 
         # Network game initialization
         self.is_network_game = host is not None and game_type is not None
-        if self.is_network_game:
+        if self.is_network_game and host and game_type:  # Add explicit checks
             self.port = 9000
-            self.host = host
-            self.type = game_type
+            self.host = str(host)  # Ensure string type
+            self.type = str(game_type)  # Ensure string type
             self.is_host = game_type == 'create'
             self.health = self.player.health
             self.__messages = []
@@ -282,20 +284,37 @@ class Game:
 
     def draw(self):
         # Only redraw what's necessary
-        dirty_rects = []
-        
         # Draw main game elements
         self.object_renderer.draw()
         self.weapon.draw()
         
-        # Draw UI elements only in dirty regions
+        # Draw crosshair last so it's always on top
+        self.draw_crosshair()
+        
+        # Draw UI elements
         health_rect = self.draw_health()
         stats_rect = self.draw_stats()
         
-        dirty_rects.extend([health_rect, stats_rect])
+        pg.display.flip()
+
+    def draw_crosshair(self):
+        # Make crosshair more visible
+        center_x, center_y = WIDTH // 2, HEIGHT // 2
+        color = (255, 0, 0)  # Changed to red
+        line_length = 15     # Made longer
+        thickness = 2
         
-        # Update only the changed portions of the screen
-        pg.display.update(dirty_rects)
+        # Draw with black outline for better visibility
+        pg.draw.line(self.screen, (0, 0, 0), (center_x - line_length - 1, center_y),
+                     (center_x + line_length + 1, center_y), thickness + 2)
+        pg.draw.line(self.screen, (0, 0, 0), (center_x, center_y - line_length - 1),
+                     (center_x, center_y + line_length + 1), thickness + 2)
+                     
+        # Draw red crosshair
+        pg.draw.line(self.screen, color, (center_x - line_length, center_y),
+                     (center_x + line_length, center_y), thickness)
+        pg.draw.line(self.screen, color, (center_x, center_y - line_length),
+                     (center_x, center_y + line_length), thickness)
 
     def draw_health(self):
         health_text = f'Health: {self.player.health}%'

@@ -1,6 +1,7 @@
 from settings import *
 import pygame as pg
 import math
+from typing import Tuple, Optional
 
 class Player:
     def __init__(self, game) -> None:
@@ -12,6 +13,7 @@ class Player:
         self.rel = 0
         self.health_recovery_delay = 700
         self.time_prev = pg.time.get_ticks()
+        self.pitch: float = 0  # Add pitch initialization
 
     def recover_health(self):
         if self.check_health_recovery_delay() and self.health < PLAYER_MAX_HEALTH:
@@ -52,12 +54,14 @@ class Player:
         speed_cos = speed * cos_a
 
         keys = pg.key.get_pressed()
+        # Forward and backward
         if keys[pg.K_w]:
             dx += speed_cos
             dy += speed_sin
         if keys[pg.K_s]:
             dx += -speed_cos
             dy += -speed_sin
+        # Strafe left and right    
         if keys[pg.K_a]:
             dx += speed_sin
             dy += -speed_cos
@@ -66,15 +70,16 @@ class Player:
             dy += speed_cos
 
         self.check_wall_collision(dx, dy)
-
-        # if keys[pg.K_LEFT]:
-        #     self.angle -= PLAYER_ROT_SPEED * self.game.delta_time
-        # if keys[pg.K_RIGHT]:
-        #     self.angle += PLAYER_ROT_SPEED * self.game.delta_time
+        
+        # Looking up and down
+        if keys[pg.K_UP]:
+            self.pitch = min(self.pitch + 0.02, PLAYER_MAX_PITCH)
+        if keys[pg.K_DOWN]:
+            self.pitch = max(self.pitch - 0.02, PLAYER_MIN_PITCH)
         
         self.angle %= math.tau # tau = 2 * pi
 
-    def check_wall(self, x, y):
+    def check_wall(self, x: float, y: float) -> bool:
         return (x, y) not in self.game.map.world_map
     
     def check_wall_collision(self, dx, dy):
@@ -95,12 +100,21 @@ class Player:
 
     def mouse_control(self):
         mx, my = pg.mouse.get_pos()
-
         if mx < MOUSE_BORDER_LEFT or mx > MOUSE_BORDER_RIGHT:
             pg.mouse.set_pos([HALF_WIDTH, HALF_HEIGHT])
-        self.rel = pg.mouse.get_rel()[0]
-        self.rel = max(-MOUSE_MAX_REL, min(MOUSE_MAX_REL, self.rel))
-        self.angle += self.rel * MOUSE_SENSITIVITY * self.game.delta_time
+            
+        # Get both x and y mouse movement
+        rel_x, rel_y = pg.mouse.get_rel()
+        rel_x = max(-MOUSE_MAX_REL, min(MOUSE_MAX_REL, rel_x))
+        rel_y = max(-MOUSE_MAX_REL, min(MOUSE_MAX_REL, rel_y))
+        
+        # Horizontal rotation
+        self.angle += rel_x * MOUSE_SENSITIVITY * self.game.delta_time
+        
+        # Vertical look (pitch)
+        self.pitch = max(PLAYER_MIN_PITCH, 
+                        min(PLAYER_MAX_PITCH, 
+                            self.pitch - rel_y * MOUSE_SENSITIVITY * self.game.delta_time))
 
     def update(self):
         self.movement()
@@ -108,9 +122,9 @@ class Player:
         self.recover_health()
 
     @property
-    def pos(self):
+    def pos(self) -> Tuple[float, float]:
         return self.x, self.y
     
     @property
-    def map_pos(self):
+    def map_pos(self) -> Tuple[int, int]:
         return int(self.x), int(self.y)
