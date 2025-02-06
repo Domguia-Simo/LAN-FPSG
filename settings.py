@@ -1,6 +1,7 @@
 # game settings
 import math
 import os
+import getpass
 
 abs_folder_path = os.path.dirname(__file__)
 
@@ -40,5 +41,12 @@ HALF_TEXTURE_SIZE = TEXTURE_SIZE // 2
 PLAYER_MAX_PITCH = 0.5  # Maximum up angle
 PLAYER_MIN_PITCH = -0.5  # Maximum down angle
 
-# Database settings
-DB_PATH = os.path.join(abs_folder_path, 'game_stats.db')
+# Get current user's home directory
+USER_HOME = os.path.expanduser('~')
+# Create a hidden directory in user's home for game data
+GAME_DATA_DIR = os.path.join(USER_HOME, '.lanfpsg')
+# Create user-specific database path
+DB_PATH = os.path.join(GAME_DATA_DIR, 'game_stats.db')
+
+# Create game data directory if it doesn't exist
+os.makedirs(GAME_DATA_DIR, exist_ok=True)

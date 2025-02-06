@@ -5,12 +5,13 @@ from settings import DB_PATH
 
 class DatabaseHandler:
     def __init__(self):
-        # Create database directory if it doesn't exist
-        db_dir = os.path.dirname(os.path.abspath(__file__))
-        self.db_path = os.path.join(db_dir, 'game_stats.db')
+        self.db_path = DB_PATH
         
         # Check if database exists
         is_new_db = not os.path.exists(self.db_path)
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         
         self.conn = sqlite3.connect(self.db_path)
         self.cursor = self.conn.cursor()
@@ -20,7 +21,7 @@ class DatabaseHandler:
         else:
             self.update_schema()
             
-        print("Database initialized")
+        print(f"Database initialized at: {self.db_path}")
 
     def create_tables(self):
         """Create fresh tables with current schema"""
