@@ -292,7 +292,6 @@ class Game:
         self.draw_crosshair()
         
         # Draw UI elements
-        health_rect = self.draw_health()
         stats_rect = self.draw_stats()
         
         pg.display.flip()
@@ -315,19 +314,6 @@ class Game:
                      (center_x + line_length, center_y), thickness)
         pg.draw.line(self.screen, color, (center_x, center_y - line_length),
                      (center_x, center_y + line_length), thickness)
-
-    def draw_health(self):
-        health_text = f'Health: {self.player.health}%'
-        health_surface = self.font.render(health_text, True, (255, 0, 0))
-        # Move position more to the left
-        x = WIDTH - health_surface.get_width() - 100  # More padding
-        y = 20
-        # Simpler outline
-        outline = self.font.render(health_text, True, (0, 0, 0))
-        self.screen.blit(outline, (x + 1, y + 1))  # Single pixel outline
-        self.screen.blit(health_surface, (x, y))
-        rect = pg.Rect(x, y, health_surface.get_width() + 2, health_surface.get_height() + 2)
-        return rect
 
     def draw_stats(self):
         kills_text = f'Kills: {self.kills}'

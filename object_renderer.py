@@ -24,9 +24,12 @@ class ObjectRenderer:
 
     def draw_player_health(self):
         health = str(self.game.player.health)
+        health_y_position = 40  # Vertical position
+        health_x_offset = 20    # Horizontal offset from left edge
+        i = -1
         for i, char in enumerate(health):
-            self.screen.blit(self.digits[char], (i * self.digit_size, 0))
-        self.screen.blit(self.digits['10'], ((i + 1) * self.digit_size, 0))
+            self.screen.blit(self.digits[char], (health_x_offset + i * self.digit_size, health_y_position))
+        self.screen.blit(self.digits['10'], (health_x_offset + (i + 1) * self.digit_size, health_y_position))
 
     def player_damage(self):
         self.screen.blit(self.blood_screen, (0, 0))

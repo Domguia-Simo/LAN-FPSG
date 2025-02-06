@@ -108,12 +108,16 @@ class DatabaseHandler:
                 VALUES (?, ?, ?, ?, ?)
             ''', (self.current_session_id, player_name, health, kills, time.time()))
             
-            # Update total kills for the session
+            # Update total kills for the session with the highest kill count achieved
             self.cursor.execute('''
                 UPDATE game_sessions 
-                SET total_kills = ?
+                SET total_kills = (
+                    SELECT MAX(kills) 
+                    FROM player_stats 
+                    WHERE session_id = ?
+                )
                 WHERE id = ?
-            ''', (kills, self.current_session_id))
+            ''', (self.current_session_id, self.current_session_id))
             
             self.conn.commit()
             print(f"Stats saved - Player: {player_name}, Health: {health}, Kills: {kills}")
@@ -161,15 +165,17 @@ class DatabaseHandler:
         return self.cursor.fetchone()[0] or 0
 
     def get_all_time_kills(self, player_name):
-        """Get total kills across all sessions"""
+        """Get highest kill count from any single session"""
         try:
             self.cursor.execute('''
-                SELECT MAX(total_kills) 
+                SELECT total_kills 
                 FROM game_sessions 
-                WHERE player_name = ?
+                WHERE player_name = ? 
+                ORDER BY total_kills DESC 
+                LIMIT 1
             ''', (player_name,))
-            result = self.cursor.fetchone()[0]
-            total_kills = result if result is not None else 0
+            result = self.cursor.fetchone()
+            total_kills = result[0] if result is not None else 0
             print(f"All-time kills for {player_name}: {total_kills}")
             return total_kills
         except Exception as e:
